@@ -1,0 +1,14 @@
+{
+  "name": "vllm-control-center-desktop-spike",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron desktop shell spike for vLLM Control Center.",
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "check": "node scripts/check-desktop.mjs"
+  },
+  "devDependencies": {
+    "electron": "39.8.10"
+  }
+}
