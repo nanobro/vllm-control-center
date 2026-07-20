@@ -1,6 +1,6 @@
 [project]
 name = "vllm-control-center-controller"
-version = "0.62.0"
+version = "0.79.0"
 description = "FastAPI controller for vLLM Control Center"
 requires-python = ">=3.10"
 dependencies = [
