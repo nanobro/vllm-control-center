@@ -19,6 +19,7 @@ import { ModelsLibraryPage } from './ModelsLibraryPage';
 import { CompatibilityPage } from './CompatibilityPage';
 import { SettingsPage } from './SettingsPage';
 import { ServerPage } from './ServerPage';
+import { RecipeRunPage } from './RecipeRunPage';
 import { LocalModelsPage } from './LocalModelsPage';
 import { ReleasePage } from './ReleasePage';
 import { AdvancedToolsPage } from './AdvancedToolsPage';
@@ -100,9 +101,7 @@ export function App() {
 
   const navigate = (nextPage: Page) => {
     setPage(nextPage);
-    if (!isPrimaryPage(nextPage)) {
-      setAdvancedMode(true);
-    }
+    if (!isPrimaryPage(nextPage)) setAdvancedMode(true);
   };
 
   const supportIsActive = !isPrimaryPage(page);
@@ -111,6 +110,11 @@ export function App() {
   const returnToDailyMode = () => {
     setAdvancedMode(false);
     setPage('server');
+  };
+
+  const openLogs = (id: string) => {
+    setSelectedInstanceId(id);
+    navigate('logs');
   };
 
   return (
@@ -134,25 +138,23 @@ export function App() {
             <details className="nav-group" open={supportIsActive || advancedMode}>
               <summary>Help & support</summary>
               {advancedPages.map((item) => <NavButton key={item.id} item={item} active={page === item.id} onClick={() => navigate(item.id)} />)}
-              {advancedMode && (
-                <button className="sidebar-soft-action" onClick={returnToDailyMode}>
-                  Back to Daily mode
-                </button>
-              )}
+              {advancedMode && <button className="sidebar-soft-action" onClick={returnToDailyMode}>Back to Daily mode</button>}
             </details>
           )}
         </nav>
       </aside>
       <main className="main">
-        {page === 'server' && <ServerPage onOpenLogs={(id) => { setSelectedInstanceId(id); navigate('logs'); }} onOpenMetrics={(id) => { setSelectedInstanceId(id); navigate('metrics'); }} onOpenPlayground={(id) => { setSelectedInstanceId(id); navigate('playground'); }} />}
-        {page === 'models-library' && <ModelsLibraryPage onOpenRunModel={() => navigate('server')} onOpenLogs={(id) => { setSelectedInstanceId(id); navigate('logs'); }} onOpenPlayground={(id) => { setSelectedInstanceId(id); navigate('playground'); }} />}
+        {page === 'server' && (advancedMode
+          ? <ServerPage onOpenLogs={openLogs} onOpenMetrics={(id) => { setSelectedInstanceId(id); navigate('metrics'); }} onOpenPlayground={(id) => { setSelectedInstanceId(id); navigate('playground'); }} />
+          : <RecipeRunPage onOpenAdvanced={() => setAdvancedMode(true)} onOpenLogs={openLogs} />)}
+        {page === 'models-library' && <ModelsLibraryPage onOpenRunModel={() => navigate('server')} onOpenLogs={openLogs} onOpenPlayground={(id) => { setSelectedInstanceId(id); navigate('playground'); }} />}
         {page === 'dashboard' && <DashboardPage />}
         {page === 'model-hub' && <ModelHubPage />}
-        {page === 'local-models' && <LocalModelsPage onOpenLogs={(id) => { setSelectedInstanceId(id); navigate('logs'); }} onOpenPlayground={(id) => { setSelectedInstanceId(id); navigate('playground'); }} />}
+        {page === 'local-models' && <LocalModelsPage onOpenLogs={openLogs} onOpenPlayground={(id) => { setSelectedInstanceId(id); navigate('playground'); }} />}
         {page === 'setup' && <SetupPage />}
-        {page === 'instances' && <InstancesPage onSelectLogs={(id) => { setSelectedInstanceId(id); navigate('logs'); }} />}
+        {page === 'instances' && <InstancesPage onSelectLogs={openLogs} />}
         {page === 'models' && <ModelsPage />}
-        {page === 'downloads' && <DownloadsPage onOpenLocalModels={() => navigate('local-models')} onOpenLogs={(id) => { setSelectedInstanceId(id); navigate('logs'); }} onOpenPlayground={(id) => { setSelectedInstanceId(id); navigate('playground'); }} />}
+        {page === 'downloads' && <DownloadsPage onOpenLocalModels={() => navigate('local-models')} onOpenLogs={openLogs} onOpenPlayground={(id) => { setSelectedInstanceId(id); navigate('playground'); }} />}
         {page === 'compatibility' && <CompatibilityPage />}
         {page === 'recipes' && <RecipesPage />}
         {page === 'history' && <ChatHistoryPage />}
