@@ -1,7 +1,10 @@
+import logging
 from datetime import datetime, timezone
 
 from app.db import execute, fetchall
 from app.schemas.instances import LogLine
+
+_RUNTIME_LOGGER = logging.getLogger("uvicorn.error")
 
 
 def now_iso() -> str:
@@ -17,10 +20,15 @@ def redact_line(line: str) -> str:
 
 
 async def append_log(instance_id: str, stream: str, line: str) -> None:
+    safe_line = redact_line(line)
     await execute(
         "INSERT INTO logs(instance_id, stream, line, created_at) VALUES (?, ?, ?, ?)",
-        (instance_id, stream, redact_line(line), now_iso()),
+        (instance_id, stream, safe_line, now_iso()),
     )
+    # Mirror persisted runtime output into the controller process log so hardware
+    # evidence still contains child stdout/stderr even if an Eject later removes
+    # the transient instance and database log rows.
+    _RUNTIME_LOGGER.info("runtime[%s][%s] %s", instance_id, stream, safe_line)
 
 
 async def tail_logs(instance_id: str, tail: int = 200) -> list[LogLine]:
