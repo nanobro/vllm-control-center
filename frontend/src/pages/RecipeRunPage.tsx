@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, Eject, ExternalLink, LoaderCircle, Play, Settings2, SquareTerminal } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ExternalLink, LoaderCircle, Play, Power, Settings2, SquareTerminal } from 'lucide-react';
 import { useState } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8787';
@@ -170,7 +170,7 @@ export function RecipeRunPage({
         <div className="row wrap">
           {active ? (
             <button className="btn danger" type="button" disabled={eject.isPending || instance?.status === 'stopping'} onClick={() => instance && eject.mutate(instance.id)}>
-              {eject.isPending || instance?.status === 'stopping' ? <LoaderCircle className="spin" size={17} /> : <Eject size={17} />}
+              {eject.isPending || instance?.status === 'stopping' ? <LoaderCircle className="spin" size={17} /> : <Power size={17} />}
               {instance?.status === 'stopping' ? 'Ejecting…' : 'Eject'}
             </button>
           ) : (
