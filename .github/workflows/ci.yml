@@ -21,6 +21,8 @@ jobs:
         run: |
           cd controller
           ruff check app tests
+      - name: Validate hardware QA harness
+        run: python -m py_compile scripts/dgx-spark-hardware-qa.py
       - name: Test backend
         run: |
           cd controller
