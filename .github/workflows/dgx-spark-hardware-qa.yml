@@ -34,18 +34,32 @@ jobs:
           clean: true
 
       - name: Confirm runner identity
+        env:
+          VCC_PYTHON: ${{ vars.VCC_PYTHON }}
+          VCC_VLLM_BIN: ${{ vars.VCC_VLLM_BIN }}
+          VCC_VLLM_PYTHON: ${{ vars.VCC_VLLM_PYTHON }}
         run: |
           set -eu
           uname -a
           test "$(uname -m)" = "aarch64"
           nvidia-smi
-          vllm --version
-          "${VCC_PYTHON:-python3}" -c 'import torch; print(torch.__version__, torch.version.cuda)'
+          vllm_bin="${VCC_VLLM_BIN:-$(command -v vllm)}"
+          if [ -n "${VCC_VLLM_PYTHON:-}" ]; then
+            vllm_python="$VCC_VLLM_PYTHON"
+          elif [ -x "$(dirname "$vllm_bin")/python" ]; then
+            vllm_python="$(dirname "$vllm_bin")/python"
+          else
+            vllm_python="${VCC_PYTHON:-python3}"
+          fi
+          "$vllm_bin" --version
+          "$vllm_python" -c 'import torch; print(torch.__version__, torch.version.cuda)'
 
       - name: Run recipe lifecycle
         env:
           VCC_DGX_MODEL: ${{ inputs.model }}
           VCC_PYTHON: ${{ vars.VCC_PYTHON }}
+          VCC_VLLM_BIN: ${{ vars.VCC_VLLM_BIN }}
+          VCC_VLLM_PYTHON: ${{ vars.VCC_VLLM_PYTHON }}
         run: |
           set -eu
           "${VCC_PYTHON:-python3}" scripts/dgx-spark-hardware-qa.py

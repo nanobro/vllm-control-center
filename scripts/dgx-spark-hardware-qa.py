@@ -7,6 +7,8 @@ import json
 import os
 import pathlib
 import platform
+import shlex
+import shutil
 import signal
 import socket
 import subprocess
@@ -25,6 +27,8 @@ CONTROLLER_PORT = int(os.environ.get("VCC_QA_CONTROLLER_PORT", "18787"))
 MODEL_PORT = int(os.environ.get("VCC_QA_MODEL_PORT", "18000"))
 MODEL = os.environ.get("VCC_DGX_MODEL", "unsloth/Qwen3.6-35B-A3B-NVFP4-Fast")
 PYTHON = os.environ.get("VCC_PYTHON", sys.executable)
+VLLM_BIN = os.environ.get("VCC_VLLM_BIN") or shutil.which("vllm") or "vllm"
+VLLM_PYTHON_OVERRIDE = os.environ.get("VCC_VLLM_PYTHON")
 BASE = f"http://127.0.0.1:{CONTROLLER_PORT}"
 
 
@@ -50,6 +54,32 @@ def run(*argv: str, timeout: int = 30) -> dict[str, Any]:
         return {"argv": list(argv), "returncode": result.returncode, "output": redact(result.stdout.strip())}
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"argv": list(argv), "returncode": None, "output": redact(str(exc))}
+
+
+def resolve_vllm_python(vllm_bin: str, *, override: str | None = None, fallback: str = PYTHON) -> str:
+    """Resolve the Python interpreter that owns the selected vLLM CLI."""
+    if override:
+        return str(pathlib.Path(override).expanduser())
+    resolved = pathlib.Path(shutil.which(vllm_bin) or vllm_bin).expanduser()
+    for name in ("python", "python3"):
+        candidate = resolved.parent / name
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    try:
+        first_line = resolved.read_text(encoding="utf-8", errors="ignore").splitlines()[0]
+    except (OSError, IndexError):
+        return fallback
+    if first_line.startswith("#!"):
+        parts = shlex.split(first_line[2:].strip())
+        if parts:
+            interpreter = pathlib.Path(parts[0]).expanduser()
+            if interpreter.name == "env" and len(parts) > 1:
+                discovered = shutil.which(parts[1])
+                if discovered:
+                    return discovered
+            if interpreter.is_file() and os.access(interpreter, os.X_OK):
+                return str(interpreter)
+    return fallback
 
 
 def api(path: str, *, method: str = "GET", body: dict[str, Any] | None = None, timeout: int = 30) -> Any:
@@ -100,6 +130,20 @@ def test_v1() -> dict[str, Any]:
     return {"latency_ms": round((time.perf_counter() - started) * 1000), "response": payload}
 
 
+def capture_runtime_logs(instance_id: str, report: dict[str, Any]) -> None:
+    """Persist controller-owned runtime logs before Eject deletes transient rows."""
+    try:
+        entries = api(f"/api/instances/{instance_id}/logs?tail=5000", timeout=30)
+        lines = [
+            f"[{item.get('created_at', 'unknown')}] [{item.get('stream', 'unknown')}] {item.get('line', '')}"
+            for item in entries
+        ]
+        (OUT / "runtime.log").write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+        report["runtime_evidence"] = {"file": "runtime.log", "line_count": len(lines)}
+    except Exception as exc:  # noqa: BLE001 - evidence capture must not bypass cleanup.
+        report["runtime_evidence"] = {"file": "runtime.log", "error": redact(repr(exc))}
+
+
 def save(report: dict[str, Any]) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -123,6 +167,11 @@ def save(report: dict[str, Any]) -> None:
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     log = (OUT / "controller.log").open("w", encoding="utf-8")
+    resolved_vllm_bin = shutil.which(VLLM_BIN) or str(pathlib.Path(VLLM_BIN).expanduser())
+    vllm_python = resolve_vllm_python(
+        resolved_vllm_bin,
+        override=VLLM_PYTHON_OVERRIDE,
+    )
     report: dict[str, Any] = {
         "schema": 1,
         "started_at": now(),
@@ -131,8 +180,10 @@ def main() -> int:
         "system": {
             "platform": platform.platform(),
             "machine": platform.machine(),
-            "vllm": run("vllm", "--version"),
-            "torch": run(PYTHON, "-c", "import torch; print(torch.__version__); print(torch.version.cuda)"),
+            "vllm_binary": redact(resolved_vllm_bin),
+            "vllm_python": redact(vllm_python),
+            "vllm": run(resolved_vllm_bin, "--version"),
+            "torch": run(vllm_python, "-c", "import torch; print(torch.__version__); print(torch.version.cuda)"),
             "nvidia_smi": run("nvidia-smi"),
             "memory_before": run("free", "-g"),
         },
@@ -142,6 +193,7 @@ def main() -> int:
     try:
         env = os.environ.copy()
         env["VCC_DATABASE_PATH"] = str(OUT / "controller.db")
+        env["PATH"] = str(pathlib.Path(resolved_vllm_bin).parent) + os.pathsep + env.get("PATH", "")
         controller = subprocess.Popen(
             [PYTHON, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(CONTROLLER_PORT)],
             cwd=ROOT / "controller",
@@ -181,12 +233,16 @@ def main() -> int:
                 break
             time.sleep(5)
         if final_status != "running":
-            raise RuntimeError(f"Model did not reach running state; final status={final_status}")
+            capture_runtime_logs(instance_id, report)
+            last_error = ((report.get("last_status") or {}).get("instance") or {}).get("last_error")
+            detail = f"; last_error={last_error}" if last_error else ""
+            raise RuntimeError(f"Model did not reach running state; final status={final_status}{detail}")
         report["checks"]["load_and_three_warmups"] = "PASS"
 
         report["openai_test"] = test_v1()
         report["checks"]["openai_v1_test"] = "PASS"
 
+        capture_runtime_logs(instance_id, report)
         api(f"/api/runtime-recipes/qwen36-dgx-spark/{instance_id}/eject", method="POST", timeout=60)
         instance_id = None
         deadline = time.monotonic() + 60
@@ -205,6 +261,7 @@ def main() -> int:
     finally:
         if instance_id:
             try:
+                capture_runtime_logs(instance_id, report)
                 api(f"/api/runtime-recipes/qwen36-dgx-spark/{instance_id}/eject", method="POST", timeout=30)
             except Exception:
                 pass
