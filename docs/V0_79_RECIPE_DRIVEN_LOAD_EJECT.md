@@ -6,7 +6,7 @@ v0.79 changes the default Daily workflow from a generic vLLM argument form into 
 
 - Model: `unsloth/Qwen3.6-35B-A3B-NVFP4-Fast`
 - Hardware target: one NVIDIA DGX Spark / GB10
-- Evidence baseline: vLLM 0.24.x with CUDA 13 compatible PyTorch
+- Runtime target: vLLM 0.25.x with `flashinfer-python>=0.6.13` and CUDA 13 compatible PyTorch; real-hardware validation remains pending
 - Startup deadline: 10 minutes
 - Automatic warm-up: 3 requests
 - Speculative decoding: checkpoint-native MTP, `k=3`

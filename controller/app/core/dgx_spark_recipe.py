@@ -108,9 +108,9 @@ async def inspect_recipe(model: str) -> RecipeInspection:
     if not vllm_path:
         blockers.append("vLLM CLI was not found in the controller environment.")
     version_text = await _command_output(vllm_path, "--version") if vllm_path else None
-    if version_text and "0.24." not in version_text:
+    if version_text and "0.25." not in version_text:
         warnings.append(
-            f"This recipe was measured with vLLM 0.24.x; detected {version_text}. The app will try it without silently downgrading your runtime."
+            f"This checkpoint requires vLLM 0.25.x; detected {version_text}. The app will try it without silently changing your runtime."
         )
     machine = platform.machine().lower()
     if machine not in {"aarch64", "arm64"}:
@@ -127,7 +127,7 @@ async def inspect_recipe(model: str) -> RecipeInspection:
         details={
             "recipe_id": RECIPE_ID,
             "model": model,
-            "verified_vllm": "0.24.x",
+            "verified_vllm": "vLLM 0.25.x target (hardware validation pending)",
             "detected_vllm": version_text,
             "architecture": machine,
             "gpu": gpu_text,
@@ -155,7 +155,7 @@ def recipe_summary() -> dict[str, Any]:
         "id": RECIPE_ID,
         "name": "Qwen3.6 35B-A3B NVFP4 Fast — DGX Spark",
         "model_id": MODEL_ID,
-        "verified_runtime": "vLLM 0.24.x + CUDA 13 compatible PyTorch",
+        "verified_runtime": "vLLM 0.25.x target + CUDA 13 compatible PyTorch (hardware validation pending)",
         "startup_timeout_seconds": STARTUP_TIMEOUT_SECONDS,
         "warmup_requests": WARMUP_REQUESTS,
         "environment": RECIPE_ENVIRONMENT,

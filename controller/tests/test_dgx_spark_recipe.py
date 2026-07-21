@@ -9,6 +9,7 @@ from app.core.dgx_spark_recipe import (
     _local_checkpoint_issues,
     build_recipe_config,
     model_matches_recipe,
+    recipe_summary,
 )
 
 
@@ -31,6 +32,12 @@ def test_recipe_builds_exact_known_good_config():
     assert RECIPE_EXTRA_ARGS[:2] == ["--moe-backend", "flashinfer_b12x"]
     assert RECIPE_ENVIRONMENT["CUTE_DSL_ARCH"] == "sm_121a"
     assert RECIPE_ENVIRONMENT["VLLM_USE_DEEP_GEMM"] == "0"
+
+
+def test_recipe_summary_reports_required_runtime_without_claiming_hardware_pass():
+    summary = recipe_summary()
+    assert "vLLM 0.25.x target" in summary["verified_runtime"]
+    assert "hardware validation pending" in summary["verified_runtime"]
 
 
 def test_incomplete_checkpoint_is_blocked(tmp_path: Path):
