@@ -28,11 +28,14 @@ STARTUP_TIMEOUT_SECONDS = 600
 WARMUP_REQUESTS = 3
 EXPECTED_SAFETENSORS_SHARDS = 5
 RECIPE_ENVIRONMENT = {
+    "CUTE_DSL_ARCH": "sm_121a",
     "VLLM_USE_DEEP_GEMM": "0",
     "TORCHINDUCTOR_COMPILE_THREADS": "2",
     "MAX_JOBS": "4",
 }
 RECIPE_EXTRA_ARGS = [
+    "--moe-backend",
+    "flashinfer_b12x",
     "--max-num-seqs",
     "4",
     "--max-num-batched-tokens",
@@ -157,6 +160,7 @@ def recipe_summary() -> dict[str, Any]:
         "warmup_requests": WARMUP_REQUESTS,
         "environment": RECIPE_ENVIRONMENT,
         "serve": {
+            "moe_backend": "flashinfer_b12x",
             "max_model_len": 262144,
             "kv_cache_memory_bytes": 4294967296,
             "gpu_memory_utilization": 0.85,

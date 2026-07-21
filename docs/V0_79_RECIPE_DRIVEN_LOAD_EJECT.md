@@ -14,8 +14,10 @@ v0.79 changes the default Daily workflow from a generic vLLM argument form into 
 The controller applies the recipe as one unit:
 
 - `VLLM_USE_DEEP_GEMM=0`
+- `CUTE_DSL_ARCH=sm_121a`
 - `TORCHINDUCTOR_COMPILE_THREADS=2`
 - `MAX_JOBS=4`
+- FlashInfer B12x MoE backend (`--moe-backend flashinfer_b12x`)
 - 262,144-token model context
 - 4 GiB deterministic KV cache
 - 0.85 GPU memory utilization
@@ -35,5 +37,7 @@ Eject terminates the owned process group, waits for shutdown, escalates to `SIGK
 ## Honest compatibility boundary
 
 The app warns rather than silently changing the installed runtime when the detected vLLM, architecture, or GPU differs from the measured recipe. In particular, vLLM 0.25.x remains an attempted-but-unverified combination until a real DGX Spark run produces fresh evidence.
+
+The SM121a architecture and FlashInfer B12x MoE settings follow the current Hugging Face model-card guidance for this exact checkpoint. vLLM 0.25.1 exposes `flashinfer_b12x` in its extended serve help on the target DGX, but end-to-end compatibility remains gated on the real-hardware lifecycle above.
 
 This implementation was not run on a DGX Spark during development. GitHub CI validates software contracts only; real-hardware load, warm-up, endpoint test, and memory release remain the release gate.

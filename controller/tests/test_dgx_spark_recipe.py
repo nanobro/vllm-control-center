@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from app.core.command_builder import build_subprocess_argv
 from app.core.dgx_spark_recipe import (
     EXPECTED_SAFETENSORS_SHARDS,
     MODEL_ID,
@@ -23,8 +24,12 @@ def test_recipe_builds_exact_known_good_config():
     assert config.max_model_len == 262144
     assert config.kv_cache_memory_bytes == "4294967296"
     assert config.gpu_memory_utilization == 0.85
+    argv = build_subprocess_argv(config)
+    assert argv[argv.index("--moe-backend") + 1] == "flashinfer_b12x"
     assert "--max-num-batched-tokens" in config.extra_args
     assert RECIPE_EXTRA_ARGS[-1] == '{"method":"mtp","num_speculative_tokens":3}'
+    assert RECIPE_EXTRA_ARGS[:2] == ["--moe-backend", "flashinfer_b12x"]
+    assert RECIPE_ENVIRONMENT["CUTE_DSL_ARCH"] == "sm_121a"
     assert RECIPE_ENVIRONMENT["VLLM_USE_DEEP_GEMM"] == "0"
 
 
