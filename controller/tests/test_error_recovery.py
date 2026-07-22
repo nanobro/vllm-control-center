@@ -24,6 +24,17 @@ def test_oom_error_maps_to_low_vram_recovery():
     assert '--max-model-len' in (advice.actions[1].copy_text or '')
 
 
+def test_vllm_free_memory_preflight_maps_to_gpu_memory_recovery():
+    advice = build_error_recovery_advice(
+        'ValueError: Free memory on device cuda:0 (62.25/121.63 GiB) on startup '
+        'is less than desired GPU memory utilization (0.92, 111.9 GiB). '
+        'Decrease GPU memory utilization or reduce GPU memory used by other processes.'
+    )
+    assert advice.category == 'cuda_oom'
+    assert advice.title == 'Insufficient GPU memory'
+    assert any('Unload other models' in fix for fix in advice.immediate_fixes)
+
+
 def test_port_in_use_error_has_port_check_action():
     advice = build_error_recovery_advice('OSError: [Errno 98] address already in use')
     assert advice.category == 'port_in_use'

@@ -132,6 +132,26 @@ select.input { background: white; }
 .server-topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; border-color: #c7d2fe; background: linear-gradient(135deg, #ffffff, #eef2ff); }
 .server-topbar h2 { margin: 4px 0 8px; }
 .server-top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.server-current-instance {
+  display: grid;
+  gap: 2px;
+  min-width: 220px;
+  max-width: 390px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .78);
+  text-align: left;
+}
+.server-current-instance strong,
+.server-current-instance span,
+.server-current-instance small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.server-current-instance span { color: #334155; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.server-current-instance small { color: #64748b; }
 .server-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
 .server-main h3, .server-side h3 { display: flex; align-items: center; gap: 8px; margin-top: 0; }
 .server-search { max-width: 360px; }

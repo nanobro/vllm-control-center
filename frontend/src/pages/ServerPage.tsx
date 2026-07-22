@@ -749,7 +749,8 @@ export function ServerPage({ onOpenLogs, onOpenMetrics, onOpenPlayground }: { on
   }, [localGroups, selectedLocalModel?.group_id]);
   const matchingInstances = useMemo(() => (instances.data ?? [])
     .filter((item) => instanceMatchesModel(item, selectedCatalog?.model_id, selectedLocalModel?.local_path))
-    .sort((a, b) => statusRank(a.status) - statusRank(b.status)), [instances.data, selectedCatalog?.model_id, selectedLocalModel?.local_path]);
+    .sort((a, b) => statusRank(a.status) - statusRank(b.status)
+      || Date.parse(b.updated_at) - Date.parse(a.updated_at)), [instances.data, selectedCatalog?.model_id, selectedLocalModel?.local_path]);
   const exactSelectedInstance = useMemo(() => instances.data?.find((item) => item.id === selectedInstanceId) ?? null, [instances.data, selectedInstanceId]);
   const exactMatchesSelectedModel = Boolean(exactSelectedInstance && instanceMatchesModel(exactSelectedInstance, selectedCatalog?.model_id, selectedLocalModel?.local_path));
   const sameModelInstance = matchingInstances[0] ?? null;
@@ -1083,7 +1084,7 @@ export function ServerPage({ onOpenLogs, onOpenMetrics, onOpenPlayground }: { on
   ];
   const running = selectedInstance?.status === 'running';
   const starting = selectedInstance?.status === 'starting';
-  const crashedMessage = selectedInstance?.status === 'crashed' ? (selectedInstance.last_error || recovery.data?.title || 'Load failed. Open recovery help for details.') : null;
+  const crashedMessage = selectedInstance?.status === 'crashed' ? (recovery.data?.title || selectedInstance.last_error || 'Load failed. Open recovery help for details.') : null;
   const apiModelName = modelNameForApi(selectedInstance);
   const handoffModelName = testedHandoffKey === selectedHandoffKey && testedModelName ? testedModelName : apiModelName;
   const curlSnippet = selectedInstance ? buildCurlSnippet(endpoint, handoffModelName) : '';
@@ -1353,16 +1354,33 @@ export function ServerPage({ onOpenLogs, onOpenMetrics, onOpenPlayground }: { on
           <p className="muted">Choose a model, start it, test it, then copy the OpenAI base URL.</p>
         </div>
         <div className="server-top-actions">
+          {selectedInstance && (
+            <div className="server-current-instance" title={selectedInstance.config.model}>
+              <strong>{selectedInstance.name}</strong>
+              <span>{shortModelId(selectedInstance.config.model, 54)}</span>
+              <small>
+                {selectedInstance.host}:{selectedInstance.port}
+                {' · '}{selectedInstance.pid ? `PID ${selectedInstance.pid}` : 'no live PID'}
+              </small>
+            </div>
+          )}
           <button className="btn secondary" onClick={refreshServerState}><RefreshCw size={15} /> Refresh</button>
           <span className={statusClass(selectedInstance?.status)}>{selectedInstance?.status ?? 'no instance'}</span>
           {crashedMessage && <span className="crash-reason-inline" title={crashedMessage}>Failed: {shortModelId(crashedMessage, 72)}</span>}
-          {selectedInstance?.status === 'running' ? (
-            <button className="btn danger" disabled={stop.isPending} onClick={() => safeAct(() => stop.mutateAsync(selectedInstance.id))}><Square size={15} /> {stop.isPending ? 'Stopping...' : 'Unload Model'}</button>
+          {selectedInstance?.status === 'running' || selectedInstance?.status === 'starting' ? (
+            <button className="btn danger" disabled={stop.isPending} onClick={() => safeAct(() => stop.mutateAsync(selectedInstance.id))}><Square size={15} /> {stop.isPending ? 'Stopping...' : selectedInstance.status === 'starting' ? 'Cancel Load' : 'Unload Model'}</button>
+          ) : selectedInstance?.status === 'stopping' ? (
+            <button className="btn danger" disabled><Square size={15} /> Stopping...</button>
           ) : selectedInstance ? (
-            <button className="btn" disabled={start.isPending || selectedInstance.status === 'starting' || selectedInstance.status === 'stopping'} onClick={() => safeAct(() => start.mutateAsync(selectedInstance.id))}><Play size={15} /> {start.isPending || selectedInstance.status === 'starting' ? 'Starting...' : 'Start'}</button>
+            <button className="btn" disabled={start.isPending} onClick={() => safeAct(() => start.mutateAsync(selectedInstance.id))}><Play size={15} /> {start.isPending ? 'Starting...' : 'Start'}</button>
           ) : selectedCatalog ? (
             <button className="btn" disabled={quickLaunch.isPending || loadLocal.isPending} onClick={() => safeAct(() => loadSelectedModel(true))}><Play size={15} /> {quickLaunch.isPending || loadLocal.isPending ? 'Starting...' : 'Start'}</button>
           ) : null}
+          {selectedInstance && (selectedInstance.status === 'crashed' || selectedInstance.status === 'stopped') && (
+            <button className="btn secondary" disabled={eject.isPending} onClick={() => safeAct(() => eject.mutateAsync(selectedInstance.id))}>
+              <Trash2 size={15} /> {eject.isPending ? 'Clearing...' : selectedInstance.status === 'crashed' ? 'Clear failed attempt' : 'Eject instance'}
+            </button>
+          )}
         </div>
       </div>
 
