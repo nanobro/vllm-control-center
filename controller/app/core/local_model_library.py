@@ -539,6 +539,8 @@ def _looks_like_model_dir(path: Path) -> bool:
 
 
 def _local_model_id_from_path(path: Path, root: Path) -> str:
+    if path.parent.name == 'snapshots' and path.parent.parent.name.startswith('models--'):
+        return path.parent.parent.name.removeprefix('models--').replace('--', '/')
     try:
         rel = path.relative_to(root)
     except ValueError:
@@ -581,7 +583,7 @@ def scan_on_device_models(root: Path, *, max_files: int = 5000) -> tuple[list[Lo
         records.append(LocalModelRecord(
             id=f'{source}:{_safe_id(model_id)}:{_safe_id(str(path))[-24:]}',
             model_id=model_id,
-            display_name=path.stem if path.is_file() else path.name.replace('--', '/').split('/')[-1],
+            display_name=path.stem if path.is_file() else model_id.split('/')[-1],
             source=source,
             local_path=str(path),
             size_bytes=size,

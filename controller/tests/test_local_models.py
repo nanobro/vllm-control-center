@@ -136,10 +136,12 @@ async def test_local_models_reads_metadata_from_config_and_gguf(tmp_path):
     assert response.status_code == 200
     models = {item['model_id']: item for item in response.json()['models']}
     assert models['org/meta-model']['format'] == 'Safetensors'
+    assert models['org/meta-model']['display_name'] == 'meta-model'
     assert models['org/meta-model']['architecture'] == 'Qwen3ForCausalLM'
     assert models['org/meta-model']['context_length'] == 32768
     assert models['org/gguf-model']['format'] == 'GGUF'
     assert models['org/gguf-model']['quantization'] == 'Q4-K-M'
+    assert not any(item['display_name'] in {'abc123', 'def456'} for item in response.json()['models'])
 
 async def test_load_local_model_reuses_running_instance_instead_of_duplicate(tmp_path):
     client = TestClient(app)

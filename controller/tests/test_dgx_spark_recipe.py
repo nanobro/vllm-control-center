@@ -19,7 +19,7 @@ def test_recipe_matches_hf_id_and_local_folder():
     assert not model_matches_recipe("Qwen/Qwen3-0.6B")
 
 
-def test_recipe_builds_exact_known_good_config():
+def test_recipe_builds_exact_experimental_config():
     config = build_recipe_config(MODEL_ID)
     assert config.host == "0.0.0.0"
     assert config.max_model_len == 262144
@@ -36,8 +36,10 @@ def test_recipe_builds_exact_known_good_config():
 
 def test_recipe_summary_reports_required_runtime_without_claiming_hardware_pass():
     summary = recipe_summary()
-    assert "vLLM 0.25.x target" in summary["verified_runtime"]
-    assert "hardware validation pending" in summary["verified_runtime"]
+    assert "Unvalidated candidate" in summary["verified_runtime"]
+    assert "no successful chat completion" in summary["verified_runtime"]
+    assert "Experimental" in summary["name"]
+    assert "Known-good" not in summary["note"]
 
 
 def test_incomplete_checkpoint_is_blocked(tmp_path: Path):

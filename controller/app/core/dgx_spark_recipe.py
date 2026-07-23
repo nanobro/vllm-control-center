@@ -185,9 +185,9 @@ def build_recipe_config(model: str, port: int = 8000) -> VllmServeConfig:
 def recipe_summary() -> dict[str, Any]:
     return {
         "id": RECIPE_ID,
-        "name": "Qwen3.6 35B-A3B NVFP4 Fast — DGX Spark",
+        "name": "Experimental: Qwen3.6 35B-A3B NVFP4 Fast on DGX Spark",
         "model_id": MODEL_ID,
-        "verified_runtime": "vLLM 0.25.x target + CUDA 13 compatible PyTorch (hardware validation pending)",
+        "verified_runtime": "Unvalidated candidate: vLLM 0.25.x + CUDA 13 PyTorch; no successful chat completion yet",
         "startup_timeout_seconds": STARTUP_TIMEOUT_SECONDS,
         "warmup_requests": WARMUP_REQUESTS,
         "environment": RECIPE_ENVIRONMENT,
@@ -200,7 +200,7 @@ def recipe_summary() -> dict[str, Any]:
             "max_num_batched_tokens": 8192,
             "speculative_config": {"method": "mtp", "num_speculative_tokens": 3},
         },
-        "note": "Known-good settings are applied as one unit. Advanced mode remains available for manual tuning.",
+        "note": "Experimental settings derived from upstream guidance. Hardware validation is pending; no successful chat completion has been recorded.",
     }
 
 

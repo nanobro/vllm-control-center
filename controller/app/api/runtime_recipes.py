@@ -48,8 +48,8 @@ async def load_qwen36_dgx_spark(req: RecipeLoadRequest) -> dict[str, Any]:
     return {
         "ok": True,
         "message": (
-            "Known-good DGX Spark recipe applied. The model is loading; "
-            "readiness includes automatic warm-up."
+            "Experimental DGX Spark recipe applied. Hardware validation is pending; "
+            "the model is loading and readiness includes automatic warm-up."
         ),
         "warnings": inspection.warnings,
         "instance": row_to_instance(row).model_dump(),
