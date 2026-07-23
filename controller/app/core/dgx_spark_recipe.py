@@ -62,11 +62,43 @@ def model_matches_recipe(model: str) -> bool:
     return normalized == MODEL_ID.lower() or "qwen3.6-35b-a3b-nvfp4-fast" in normalized
 
 
+def _cached_hf_snapshot(model: str) -> Path | None:
+    """Resolve an already-present Hugging Face cache snapshot without downloading."""
+    if model.count('/') != 1:
+        return None
+    cache_root = Path(
+        os.environ.get('HUGGINGFACE_HUB_CACHE')
+        or (Path(os.environ['HF_HOME']) / 'hub' if os.environ.get('HF_HOME') else Path.home() / '.cache/huggingface/hub')
+    )
+    repo_root = cache_root / f"models--{model.replace('/', '--')}"
+    snapshots = repo_root / 'snapshots'
+    if not snapshots.is_dir():
+        return None
+    ref = repo_root / 'refs' / 'main'
+    if ref.is_file():
+        try:
+            candidate = snapshots / ref.read_text(encoding='utf-8').strip()
+            if candidate.is_dir():
+                return candidate
+        except OSError:
+            pass
+    try:
+        candidates = [item for item in snapshots.iterdir() if item.is_dir()]
+    except OSError:
+        return None
+    return max(candidates, key=lambda item: item.stat().st_mtime) if candidates else None
+
+
 def _local_checkpoint_issues(model: str) -> tuple[list[str], dict[str, Any]]:
     path = Path(model).expanduser()
     details: dict[str, Any] = {"local": False}
     if not path.exists():
-        return [], details
+        cached = _cached_hf_snapshot(model)
+        if cached is None:
+            return [], details
+        path = cached
+        details['requested_model'] = model
+        details['source'] = 'hf-cache'
     details["local"] = True
     details["path"] = str(path)
     if not path.is_dir():

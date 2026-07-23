@@ -60,3 +60,21 @@ def test_complete_checkpoint_passes_shape_check(tmp_path: Path):
         (model_dir / f"model-{index:05d}.safetensors").write_text("")
     issues, _ = _local_checkpoint_issues(str(model_dir))
     assert issues == []
+
+
+def test_incomplete_hf_cache_for_repo_id_is_blocked(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("HUGGINGFACE_HUB_CACHE", str(tmp_path))
+    repo = tmp_path / "models--unsloth--Qwen3.6-35B-A3B-NVFP4-Fast"
+    snapshot = repo / "snapshots" / "revision"
+    snapshot.mkdir(parents=True)
+    (repo / "refs").mkdir()
+    (repo / "refs" / "main").write_text("revision")
+    (snapshot / "config.json").write_text("{}")
+    (snapshot / "tokenizer_config.json").write_text("{}")
+    (snapshot / "model-00003-of-00005.safetensors").write_text("")
+
+    issues, details = _local_checkpoint_issues(MODEL_ID)
+
+    assert any("Expected at least 5 safetensors shards" in issue for issue in issues)
+    assert details["local"] is True
+    assert details["source"] == "hf-cache"
