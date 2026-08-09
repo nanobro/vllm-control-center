@@ -2763,3 +2763,11 @@ select.input { background: white; }
 .btn:active { transform: scale(0.98); }
 .card { transition: box-shadow var(--t-fast) var(--ease), transform var(--t-fast) var(--ease); }
 .card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(14, 21, 18, 0.08); }
+
+/* Model library polish */
+.library-row-card { transition: transform var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
+.library-row-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(14, 21, 18, 0.08); }
+.shard-strip { border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
+.shard-strip .row-between { color: var(--danger); }
+.compact-btn { padding: 6px 10px; font-size: 12px; }
+.shard-strip .btn { margin-top: 4px; }

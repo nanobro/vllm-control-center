@@ -84,12 +84,17 @@ function itemModelId(item: LibraryItem) {
 }
 
 function itemDisplayName(item: LibraryItem) {
+  let name: string;
   if (item.kind === 'local') {
-    return item.model.group_name && item.model.variant_label
+    name = item.model.group_name && item.model.variant_label
       ? `${item.model.group_name} — ${item.model.variant_label}`
       : item.model.display_name;
+  } else {
+    name = item.job.model_id.split('/').pop() || item.job.model_id;
   }
-  return item.job.model_id.split('/').pop() || item.job.model_id;
+  // Defense in depth: a raw 40-hex HF snapshot SHA should never be shown as a display name.
+  if (/^[0-9a-f]{40}$/.test(name)) return `snapshot ${name.slice(0, 8)}`;
+  return name;
 }
 
 function itemStatus(item: LibraryItem) {
@@ -110,6 +115,13 @@ function itemHasAttention(item: LibraryItem) {
     || item.model.download_status === 'failed'
     || item.model.compatibility_status === 'attention'
     || Boolean(item.model.metadata_warnings?.length);
+}
+
+// Detect an incomplete multi-shard checkpoint from metadata warnings (e.g. "2 missing weight shard(s)").
+function incompleteShardLabel(model: LocalModelRecord): string | null {
+  const warning = model.metadata_warnings?.find((w) => /shard/i.test(w));
+  if (!warning && model.download_status !== 'failed') return null;
+  return warning ?? (model.download_status === 'failed' ? 'Download incomplete' : null);
 }
 
 function compatibilityClass(status?: string | null) {
@@ -565,6 +577,15 @@ export function ModelsLibraryPage({ onOpenLogs, onOpenPlayground, onOpenRunModel
                         <div className="row-between"><strong>{jobStatusText(item.job)}</strong><span>{jobProgress(item.job)}%</span></div>
                         <div className="progress-track"><div className="progress-bar" style={{ width: `${jobProgress(item.job)}%` }} /></div>
                         <p className="muted">{item.job.current_file || item.job.message || item.job.error || 'Waiting for download manager.'}</p>
+                      </div>
+                    )}
+                    {item.kind === 'local' && incompleteShardLabel(item.model) && (
+                      <div className="download-status download-failed shard-strip">
+                        <div className="row-between"><strong><AlertTriangle size={13} /> Incomplete checkpoint</strong></div>
+                        <p className="muted">{incompleteShardLabel(item.model)}</p>
+                        {item.model.download_job_id && (
+                          <button className="btn secondary compact-btn" onClick={() => act(() => api.retryDownload(item.model.download_job_id!, { hf_token_env: hfTokenEnv }), 'Download resumed.')}><RefreshCw size={14} /> Resume download</button>
+                        )}
                       </div>
                     )}
                   </div>
