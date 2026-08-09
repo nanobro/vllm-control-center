@@ -95,7 +95,7 @@ export function App() {
   return (
     <div className="shell compact-shell">
       <aside className="sidebar">
-        <h1>vLLM Control Center</h1>
+        <div className="wordmark"><i className="wordmark-dot" /><span>vLLM Control Center</span></div>
         <p className="sidebar-caption">Local and remote vLLM server</p>
         <span className="sidebar-version-pill quiet" title="Current public beta version">{APP_VERSION_LABEL}</span>
         <div className={advancedMode ? 'mode-card advanced' : 'mode-card'}>
