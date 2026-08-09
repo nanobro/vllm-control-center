@@ -58,5 +58,8 @@ async def load_qwen36_dgx_spark(req: RecipeLoadRequest) -> dict[str, Any]:
 
 @router.post("/qwen36-dgx-spark/{instance_id}/eject")
 async def eject_qwen36_dgx_spark(instance_id: str) -> dict[str, Any]:
-    await eject_recipe_instance(instance_id)
+    try:
+        await eject_recipe_instance(instance_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"ok": True, "ejected": True}

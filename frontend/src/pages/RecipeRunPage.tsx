@@ -19,8 +19,8 @@ import { StatusLamp } from '../components/StatusLamp';
 import { useToast } from '../components/Toast';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8787';
-const DEFAULT_MODEL = 'unsloth/Qwen3.6-35B-A3B-NVFP4-Fast';
-const EXPECTED_SHARDS = 5;
+const DEFAULT_MODEL = 'unsloth/Qwen3.6-35B-A3B-NVFP4';
+
 
 type RecipeResponse = {
   recipe: {
@@ -36,6 +36,9 @@ type RecipeResponse = {
       max_model_len?: number;
       speculative_config?: { method?: string; num_speculative_tokens?: number };
       gpu_memory_utilization?: number;
+      reasoning_parser?: string;
+      enable_auto_tool_choice?: boolean;
+      tool_call_parser?: string;
     };
   };
   inspection: {
@@ -45,6 +48,12 @@ type RecipeResponse = {
     details: Record<string, unknown>;
   };
   instance?: InstanceRecord | null;
+  runtime?: {
+    status: 'absent' | 'external' | 'managed';
+    matching_model?: string | null;
+    port?: number;
+    models?: string[];
+  };
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -143,17 +152,20 @@ export function RecipeRunPage({
 
   const data = recipe.data;
   const instance = data?.instance;
-  const status = instance?.status ?? (data?.inspection.ready ? 'stopped' : 'blocked');
+  const runtime = data?.inspection.details?.runtime as RecipeResponse['runtime'] | undefined;
+  const status = runtime?.status === 'external'
+    ? 'external'
+    : instance?.status ?? (data?.inspection.ready ? 'stopped' : 'blocked');
   const ready = data?.inspection.ready ?? false;
-  const baseUrl = endpoint(instance);
-  const active = status === 'running' || status === 'starting' || status === 'stopping';
+  const baseUrl = status === 'external' && runtime?.port
+    ? `http://${window.location.hostname || 'localhost'}:${runtime.port}/v1`
+    : endpoint(instance);
 
+  const indexedShards = Array.isArray(data?.inspection.details?.indexed_shards)
+    ? data.inspection.details.indexed_shards as string[]
+    : [];
+  const expectedShards = indexedShards.length || null;
   const shardCount = (() => {
-    // Backend does not expose safetensors_shards on the recipe endpoint; derive from the blocker string ("found N.").
-    for (const blocker of data?.inspection.blockers ?? []) {
-      const match = blocker.match(/found (\d+)/i) ?? blocker.match(/(\d+)\/(\d+).*shards?/i);
-      if (match) return Number(match[1]);
-    }
     if (typeof data?.inspection.details?.safetensors_shards === 'number') return data.inspection.details.safetensors_shards;
     return null;
   })();
@@ -171,7 +183,9 @@ export function RecipeRunPage({
 
   const serve = data?.recipe.serve;
   const specStrip = [
-    serve?.moe_backend ? `moe ${serve.moe_backend}` : null,
+    serve?.reasoning_parser ? `reasoning ${serve.reasoning_parser}` : null,
+    serve?.enable_auto_tool_choice ? 'auto tools' : null,
+    serve?.tool_call_parser ? `parser ${serve.tool_call_parser}` : null,
     serve?.speculative_config?.method ? `MTP k=${serve.speculative_config.num_speculative_tokens ?? 3}` : null,
     serve?.max_model_len ? `${(serve.max_model_len / 1024).toFixed(0)}K ctx` : null,
     serve?.gpu_memory_utilization ? `gpu_util ${Math.round(serve.gpu_memory_utilization * 100)}%` : null,
@@ -185,7 +199,7 @@ export function RecipeRunPage({
         <div>
           <p className="label">RUN</p>
           <h2>One-click model runtime</h2>
-          <p className="muted">Choose the model, press Load, then press Eject when finished. This recipe is experimental - hardware validation is pending.</p>
+          <p className="muted">The recipe mirrors the canonical DGX runtime. Control Center only ejects processes it started and can verify.</p>
         </div>
         <button className="btn secondary" type="button" onClick={onOpenAdvanced}><Settings2 size={16} /> Advanced</button>
       </div>
@@ -200,11 +214,11 @@ export function RecipeRunPage({
           {data?.inspection.blockers.map((blocker) => (
             <div className="notice error" key={blocker}><AlertTriangle size={16} /> <span>{blocker}</span></div>
           ))}
-          {shardCount !== null && shardCount < EXPECTED_SHARDS && (
+          {shardCount !== null && expectedShards !== null && shardCount < expectedShards && (
             <div className="shard-block">
-              <p className="muted">Checkpoint is incomplete ({shardCount}/{EXPECTED_SHARDS} shards). Resume the download to finish the last shard.</p>
+              <p className="muted">Checkpoint is incomplete ({shardCount}/{expectedShards} shards). Resume the download to finish the missing shard(s).</p>
               <div className="shard-checklist">
-                {Array.from({ length: EXPECTED_SHARDS }, (_, i) => (
+                {Array.from({ length: expectedShards }, (_, i) => (
                   <span key={i} className={`shard ${i < shardCount ? 'present' : 'missing'}`}>{i + 1}</span>
                 ))}
               </div>
@@ -220,18 +234,36 @@ export function RecipeRunPage({
         </div>
       )}
 
+      {/* EXTERNAL */}
+      {status === 'external' && (
+        <div className="card run-card">
+          <div className="run-head">
+            <div>
+              <p className="label">RUNNING EXTERNAL</p>
+              <h3 className="display run-model">Qwen3.6 35B-A3B NVFP4</h3>
+              <p className="mono spec-strip">{specStrip}</p>
+            </div>
+            <StatusLamp state="running" />
+          </div>
+          <div className="notice warning"><AlertTriangle size={16} /><span>The matching model is already running outside Control Center. It is available for use, but this controller does not own it.</span></div>
+          {baseUrl && <div className="endpoint-card dark"><div><span className="label">OpenAI base URL</span><strong className="mono">{baseUrl}</strong></div><CopyUrl url={baseUrl} /></div>}
+          <button className="btn primary load-btn" type="button" disabled><Play size={19} /> Load unavailable - already running</button>
+          <p className="muted small">Eject is unavailable because ownership cannot be proven. Stop the external service through its own supervisor.</p>
+        </div>
+      )}
+
       {/* READY / STOPPED */}
       {status === 'stopped' && (
         <div className="card run-card">
           <div className="run-head">
             <div>
               <p className="label">MODEL</p>
-              <h3 className="display run-model">{data?.recipe.name ?? 'Qwen3.6 35B-A3B NVFP4 Fast'}</h3>
+              <h3 className="display run-model">{data?.recipe.name ?? 'Qwen3.6 35B-A3B NVFP4'}</h3>
               {specStrip && <p className="mono spec-strip">{specStrip}</p>}
             </div>
             <StatusLamp state="stopped" />
           </div>
-          <span className="badge amber">Experimental - not yet validated on this hardware</span>
+          <span className="badge green">Ready - complete checkpoint detected</span>
 
           <div className="grid two-col">
             <label className="field">
@@ -261,7 +293,7 @@ export function RecipeRunPage({
           <div className="run-head">
             <div>
               <p className="label">LOADING</p>
-              <h3 className="display run-model">{data?.recipe.name ?? 'Qwen3.6 35B-A3B NVFP4 Fast'}</h3>
+              <h3 className="display run-model">{data?.recipe.name ?? 'Qwen3.6 35B-A3B NVFP4'}</h3>
             </div>
             <StatusLamp state="starting" />
           </div>
@@ -287,7 +319,7 @@ export function RecipeRunPage({
           <div className="run-head">
             <div>
               <p className="label">SERVING</p>
-              <h3 className="display run-model">{data?.recipe.name ?? 'Qwen3.6 35B-A3B NVFP4 Fast'}</h3>
+              <h3 className="display run-model">{data?.recipe.name ?? 'Qwen3.6 35B-A3B NVFP4'}</h3>
               {specStrip && <p className="mono spec-strip">{specStrip}</p>}
             </div>
             <StatusLamp state="running" />

@@ -21,12 +21,11 @@ from app.core.process_manager import ManagedProcess, process_manager, probe_open
 from app.db import dumps_json, execute, fetchall, fetchone, loads_json
 from app.schemas.instances import VllmServeConfig
 
-RECIPE_ID = "dgx-spark-qwen36-35b-a3b-nvfp4-fast"
-MODEL_ID = "unsloth/Qwen3.6-35B-A3B-NVFP4-Fast"
+RECIPE_ID = "dgx-spark-qwen36-35b-a3b-nvfp4"
+MODEL_ID = "unsloth/Qwen3.6-35B-A3B-NVFP4"
 INSTANCE_PREFIX = "Recipe: Qwen3.6 35B NVFP4"
 STARTUP_TIMEOUT_SECONDS = 600
 WARMUP_REQUESTS = 3
-EXPECTED_SAFETENSORS_SHARDS = 5
 RECIPE_ENVIRONMENT = {
     "CUTE_DSL_ARCH": "sm_121a",
     "VLLM_USE_DEEP_GEMM": "0",
@@ -34,12 +33,6 @@ RECIPE_ENVIRONMENT = {
     "MAX_JOBS": "4",
 }
 RECIPE_EXTRA_ARGS = [
-    "--moe-backend",
-    "flashinfer_b12x",
-    "--max-num-seqs",
-    "4",
-    "--max-num-batched-tokens",
-    "8192",
     "--speculative-config",
     json.dumps({"method": "mtp", "num_speculative_tokens": 3}, separators=(",", ":")),
 ]
@@ -59,7 +52,9 @@ class RecipeInspection:
 
 def model_matches_recipe(model: str) -> bool:
     normalized = model.strip().lower().replace("_", "-")
-    return normalized == MODEL_ID.lower() or "qwen3.6-35b-a3b-nvfp4-fast" in normalized
+    canonical = MODEL_ID.lower()
+    name = canonical.rsplit("/", 1)[-1]
+    return normalized == canonical or normalized.endswith(f"/{canonical}") or (normalized.endswith(name) and not normalized.endswith(f"{name}-fast"))
 
 
 def _cached_hf_snapshot(model: str) -> Path | None:
@@ -110,10 +105,21 @@ def _local_checkpoint_issues(model: str) -> tuple[list[str], dict[str, Any]]:
     issues: list[str] = []
     if incomplete:
         issues.append("The checkpoint still has .incomplete files. Finish the download before loading.")
-    if model_matches_recipe(model) and len(shards) < EXPECTED_SAFETENSORS_SHARDS:
-        issues.append(
-            f"Expected at least {EXPECTED_SAFETENSORS_SHARDS} safetensors shards for this recipe; found {len(shards)}."
-        )
+    index_files = [path / "model.safetensors.index.json", path / "pytorch_model.bin.index.json"]
+    expected_shards: set[str] = set()
+    for index_path in index_files:
+        try:
+            index = json.loads(index_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        weight_map = index.get("weight_map")
+        if isinstance(weight_map, dict):
+            expected_shards.update(str(value) for value in weight_map.values())
+    missing_indexed = sorted(name for name in expected_shards if not (path / name).is_file())
+    details["indexed_shards"] = sorted(expected_shards)
+    details["missing_indexed_shards"] = missing_indexed
+    if missing_indexed:
+        issues.append("Checkpoint index references missing weight shards: " + ", ".join(missing_indexed[:5]))
     for required in ("config.json", "tokenizer_config.json"):
         if not (path / required).exists():
             issues.append(f"Checkpoint is missing {required}.")
@@ -133,12 +139,47 @@ async def _command_output(*argv: str, timeout: float = 15.0) -> str | None:
         return None
 
 
+async def _runtime_evidence(model: str, port: int = 8000) -> dict[str, Any]:
+    """Read-only discovery of a matching listener; never mutates the runtime."""
+    host = "127.0.0.1"
+    models: list[str] = []
+    endpoint_error: str | None = None
+    try:
+        with urlrequest.urlopen(f"http://{host}:{port}/v1/models", timeout=3) as response:
+            payload = json.loads(response.read().decode())
+        models = [str(item.get("id")) for item in payload.get("data", []) if isinstance(item, dict)]
+    except (OSError, TimeoutError, urlerror.URLError, json.JSONDecodeError) as exc:
+        endpoint_error = str(exc)
+    matching = next((item for item in models if model_matches_recipe(item)), None)
+    process_text = await _command_output("ps", "-eo", "pid=,args=", timeout=5)
+    listener_text = await _command_output("ss", "-ltnp", timeout=5)
+    docker_text = await _command_output("docker", "ps", "--format", "{{.Names}} {{.Command}}", timeout=5)
+    managed = False
+    for item in process_manager._processes.values():
+        if item.proc.returncode is None and item.argv and str(port) in item.argv:
+            managed = True
+            break
+    return {
+        "port": port,
+        "models": models,
+        "matching_model": matching,
+        "status": "managed" if matching and managed else ("external" if matching else "absent"),
+        "endpoint_error": endpoint_error,
+        "process_evidence": process_text or "",
+        "listener_evidence": listener_text or "",
+        "container_evidence": docker_text or "",
+    }
+
+
 async def inspect_recipe(model: str) -> RecipeInspection:
     blockers, checkpoint = _local_checkpoint_issues(model)
     warnings: list[str] = []
+    runtime = await _runtime_evidence(model)
+    if runtime["matching_model"] and model_matches_recipe(model):
+        blockers = []
     vllm_path = shutil.which("vllm")
     if not vllm_path:
-        blockers.append("vLLM CLI was not found in the controller environment.")
+        warnings.append("vLLM CLI was not found in the controller environment; Load requires the DGX runtime environment.")
     version_text = await _command_output(vllm_path, "--version") if vllm_path else None
     if version_text and "0.25." not in version_text:
         warnings.append(
@@ -164,6 +205,7 @@ async def inspect_recipe(model: str) -> RecipeInspection:
             "architecture": machine,
             "gpu": gpu_text,
             "checkpoint": checkpoint,
+            "runtime": runtime,
         },
     )
 
@@ -176,8 +218,10 @@ def build_recipe_config(model: str, port: int = 8000) -> VllmServeConfig:
         served_model_name=MODEL_ID,
         dtype="auto",
         max_model_len=262144,
-        gpu_memory_utilization=0.85,
-        kv_cache_memory_bytes="4294967296",
+        gpu_memory_utilization=0.40,
+        enable_auto_tool_choice=True,
+        tool_call_parser="qwen3_xml",
+        reasoning_parser="qwen3",
         extra_args=list(RECIPE_EXTRA_ARGS),
     )
 
@@ -185,22 +229,21 @@ def build_recipe_config(model: str, port: int = 8000) -> VllmServeConfig:
 def recipe_summary() -> dict[str, Any]:
     return {
         "id": RECIPE_ID,
-        "name": "Experimental: Qwen3.6 35B-A3B NVFP4 Fast on DGX Spark",
+        "name": "Qwen3.6 35B-A3B NVFP4 on DGX Spark",
         "model_id": MODEL_ID,
-        "verified_runtime": "Unvalidated candidate: vLLM 0.25.x + CUDA 13 PyTorch; no successful chat completion yet",
+        "verified_runtime": "Canonical DGX runtime: vLLM API validated with chat and structured tool calls",
         "startup_timeout_seconds": STARTUP_TIMEOUT_SECONDS,
         "warmup_requests": WARMUP_REQUESTS,
         "environment": RECIPE_ENVIRONMENT,
         "serve": {
-            "moe_backend": "flashinfer_b12x",
             "max_model_len": 262144,
-            "kv_cache_memory_bytes": 4294967296,
-            "gpu_memory_utilization": 0.85,
-            "max_num_seqs": 4,
-            "max_num_batched_tokens": 8192,
+            "gpu_memory_utilization": 0.40,
+            "reasoning_parser": "qwen3",
+            "enable_auto_tool_choice": True,
+            "tool_call_parser": "qwen3_xml",
             "speculative_config": {"method": "mtp", "num_speculative_tokens": 3},
         },
-        "note": "Experimental settings derived from upstream guidance. Hardware validation is pending; no successful chat completion has been recorded.",
+        "note": "Matches the live DGX shared runtime. External processes are observed read-only and are never treated as Control Center-owned.",
     }
 
 
@@ -324,6 +367,9 @@ async def load_recipe_model(model: str, port: int = 8000) -> tuple[dict[str, Any
     inspection = await inspect_recipe(model)
     if not inspection.ready:
         raise RuntimeError(" ".join(inspection.blockers))
+    runtime = inspection.details.get("runtime", {})
+    if runtime.get("status") == "external":
+        raise RuntimeError("The canonical model is already running in an external process; Load is disabled to prevent a duplicate.")
     existing = await _existing_recipe_row()
     if existing and existing["status"] in {"running", "starting"}:
         return existing, inspection
@@ -385,6 +431,17 @@ async def eject_recipe_instance(instance_id: str, *, delete_record: bool = True)
     if not row:
         return
     managed = process_manager._processes.get(instance_id)
+    if not managed or managed.proc.returncode is not None:
+        raise ValueError("This runtime is not owned by Control Center; Eject is disabled.")
+    if row.get("pid") != managed.proc.pid:
+        raise ValueError("Ownership changed before Eject; refusing to terminate an unverified process.")
+    try:
+        os.kill(managed.proc.pid, 0)
+        cmdline = Path(f"/proc/{managed.proc.pid}/cmdline").read_bytes().decode(errors="replace").replace("\x00", " ")
+        if "vllm" not in cmdline or MODEL_ID.lower() not in cmdline.lower():
+            raise ValueError("Process identity could not be revalidated; refusing to terminate it.")
+    except (OSError, ValueError) as exc:
+        raise ValueError(str(exc)) from exc
     if managed and managed.proc.returncode is None:
         await execute(
             "UPDATE instances SET status = ?, updated_at = ? WHERE id = ?",
