@@ -116,7 +116,7 @@ export function RecipeRunPage({
         <div>
           <p className="label">RUN MODEL</p>
           <h2>One-click model runtime</h2>
-          <p className="muted">Choose the model, press Load, then press Eject when finished. The known-good vLLM settings stay out of your way.</p>
+          <p className="muted">Choose the model, press Load, then press Eject when finished. This recipe is experimental - hardware validation is pending.</p>
         </div>
         <button className="btn secondary" type="button" onClick={onOpenAdvanced}><Settings2 size={16} /> Advanced</button>
       </div>
