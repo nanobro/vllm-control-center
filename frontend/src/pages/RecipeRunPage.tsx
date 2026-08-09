@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, ExternalLink, LoaderCircle, Play, Power, Settings2, SquareTerminal } from 'lucide-react';
 import { useState } from 'react';
 import { LoadProgress } from '../components/LoadProgress';
+import { useToast } from '../components/Toast';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8787';
 const DEFAULT_MODEL = 'unsloth/Qwen3.6-35B-A3B-NVFP4-Fast';
@@ -67,9 +68,9 @@ export function RecipeRunPage({
   onOpenLogs: (instanceId: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const pushToast = useToast();
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [port, setPort] = useState(8000);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const recipe = useQuery({
     queryKey: ['runtime-recipe', model],
@@ -90,19 +91,19 @@ export function RecipeRunPage({
       body: JSON.stringify({ model, port }),
     }),
     onSuccess: async (result) => {
-      setNotice(result.message);
+      pushToast({ kind: 'ok', text: result.message });
       await refresh();
     },
-    onError: (error) => setNotice(friendlyError(error)),
+    onError: (error) => pushToast({ kind: 'error', text: friendlyError(error) }),
   });
 
   const eject = useMutation({
     mutationFn: (instanceId: string) => request(`/api/runtime-recipes/qwen36-dgx-spark/${instanceId}/eject`, { method: 'POST' }),
     onSuccess: async () => {
-      setNotice('Model ejected. Model files remain on disk.');
+      pushToast({ kind: 'ok', text: 'Model ejected. Model files remain on disk.' });
       await refresh();
     },
-    onError: (error) => setNotice(friendlyError(error)),
+    onError: (error) => pushToast({ kind: 'error', text: friendlyError(error) }),
   });
 
   const data = recipe.data;
@@ -157,14 +158,13 @@ export function RecipeRunPage({
         {data?.inspection.warnings.map((warning) => (
           <div className="notice warning" key={warning}><AlertTriangle size={16} /> <span>{warning}</span></div>
         ))}
-        {notice && <div className="notice"><CheckCircle2 size={16} /> <span>{notice}</span></div>}
         {instance?.last_error && <div className="notice error"><AlertTriangle size={16} /> <span>{instance.last_error}</span></div>}
 
         {baseUrl && instance?.status === 'running' && (
           <div className="endpoint-card">
             <span>OpenAI base URL</span>
             <strong>{baseUrl}</strong>
-            <button className="btn secondary compact-btn" onClick={() => navigator.clipboard.writeText(baseUrl)} type="button">Copy URL</button>
+            <button className="btn secondary compact-btn" onClick={() => { navigator.clipboard.writeText(baseUrl); pushToast({ kind: 'ok', text: 'Copied' }); }} type="button">Copy URL</button>
           </div>
         )}
 
