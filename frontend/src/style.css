@@ -2706,3 +2706,10 @@ select.input { background: white; }
 @media (max-width: 680px) {
   .easy-test-head { display: grid; }
 }
+
+/* Status lamp component */
+.status-lamp { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.status-lamp .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--lamp); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lamp) 22%, transparent); }
+.status-lamp .dot.pulse { animation: lamp-pulse 1.6s var(--ease) infinite; }
+@keyframes lamp-pulse { 0%,100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--lamp) 22%, transparent); } 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--lamp) 8%, transparent); } }
+.lamp-detail { color: var(--ink-faint); font-family: var(--font-mono); font-size: 12px; }
