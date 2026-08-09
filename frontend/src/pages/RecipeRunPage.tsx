@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, ExternalLink, LoaderCircle, Play, Power, Settings2, SquareTerminal } from 'lucide-react';
 import { useState } from 'react';
+import { LoadProgress } from '../components/LoadProgress';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8787';
 const DEFAULT_MODEL = 'unsloth/Qwen3.6-35B-A3B-NVFP4-Fast';
@@ -184,7 +185,7 @@ export function RecipeRunPage({
         </div>
 
         {instance?.status === 'starting' && (
-          <div className="notice"><LoaderCircle className="spin" size={17} /><span>Loading weights, compiling kernels, and warming the endpoint. This recipe allows up to 10 minutes.</span></div>
+          <LoadProgress startedAt={null} currentPhase={0} />
         )}
         <p className="muted small">Eject stops the owned process group and removes the run record. It never deletes the downloaded model.</p>
       </div>

@@ -2713,3 +2713,13 @@ select.input { background: white; }
 .status-lamp .dot.pulse { animation: lamp-pulse 1.6s var(--ease) infinite; }
 @keyframes lamp-pulse { 0%,100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--lamp) 22%, transparent); } 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--lamp) 8%, transparent); } }
 .lamp-detail { color: var(--ink-faint); font-family: var(--font-mono); font-size: 12px; }
+
+/* Load progress component */
+.load-progress { border: 1px solid var(--border); background: var(--surface-sunken); border-radius: var(--r-md); padding: 14px 16px; margin-top: 12px; }
+.load-progress-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.load-elapsed { font-size: 18px; font-weight: 700; color: var(--ink); }
+.phase-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; }
+.phase-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-faint); padding: 4px 0; }
+.phase-item.done { color: var(--ok); }
+.phase-item.current { color: var(--warn); font-weight: 600; }
+.phase-icon { width: 18px; text-align: center; font-size: 12px; flex-shrink: 0; }
