@@ -148,7 +148,15 @@ export function RecipeRunPage({
   const baseUrl = endpoint(instance);
   const active = status === 'running' || status === 'starting' || status === 'stopping';
 
-  const shardCount = typeof data?.inspection.details?.safetensors_shards === 'number' ? data.inspection.details.safetensors_shards : null;
+  const shardCount = (() => {
+    // Backend does not expose safetensors_shards on the recipe endpoint; derive from the blocker string ("found N.").
+    for (const blocker of data?.inspection.blockers ?? []) {
+      const match = blocker.match(/found (\d+)/i) ?? blocker.match(/(\d+)\/(\d+).*shards?/i);
+      if (match) return Number(match[1]);
+    }
+    if (typeof data?.inspection.details?.safetensors_shards === 'number') return data.inspection.details.safetensors_shards;
+    return null;
+  })();
   const incompleteFiles = Array.isArray(data?.inspection.details?.incomplete_files)
     ? (data.inspection.details.incomplete_files as string[])
     : [];
