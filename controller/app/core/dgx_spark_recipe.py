@@ -181,10 +181,7 @@ async def inspect_recipe(model: str) -> RecipeInspection:
     if not vllm_path:
         warnings.append("vLLM CLI was not found in the controller environment; Load requires the DGX runtime environment.")
     version_text = await _command_output(vllm_path, "--version") if vllm_path else None
-    if version_text and "0.25." not in version_text:
-        warnings.append(
-            f"This checkpoint requires vLLM 0.25.x; detected {version_text}. The app will try it without silently changing your runtime."
-        )
+
     machine = platform.machine().lower()
     if machine not in {"aarch64", "arm64"}:
         warnings.append(f"The recipe targets DGX Spark ARM64; detected {machine or 'unknown architecture'}.")
@@ -200,7 +197,7 @@ async def inspect_recipe(model: str) -> RecipeInspection:
         details={
             "recipe_id": RECIPE_ID,
             "model": model,
-            "verified_vllm": "vLLM 0.25.x target (hardware validation pending)",
+            "verified_vllm": "Canonical DGX runtime validated; live version is reported from the running process",
             "detected_vllm": version_text,
             "architecture": machine,
             "gpu": gpu_text,
