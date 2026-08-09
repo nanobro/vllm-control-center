@@ -66,7 +66,17 @@ def build_error_recovery_advice(raw_text: str | None, *, context: str = 'runtime
             raw_excerpt=None,
         )
 
-    if _contains(text, 'cuda out of memory', 'torch.cuda.outofmemoryerror', 'out of memory', 'cublas_status_alloc_failed', 'cuda error: out of memory', 'insufficient memory'):
+    if _contains(
+        text,
+        'cuda out of memory',
+        'torch.cuda.outofmemoryerror',
+        'out of memory',
+        'cublas_status_alloc_failed',
+        'cuda error: out of memory',
+        'insufficient memory',
+        'less than desired gpu memory utilization',
+        'decrease gpu memory utilization or reduce gpu memory used by other processes',
+    ):
         return ErrorRecoveryAdvice(
             category='cuda_oom',
             severity='critical',

@@ -394,6 +394,19 @@ def _read_json_file(path: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def _missing_indexed_weight_files(path: Path) -> list[str]:
+    """Return weight shards referenced by an HF index but absent from the snapshot."""
+    if not path.is_dir():
+        return []
+    expected: set[str] = set()
+    for name in ('model.safetensors.index.json', 'pytorch_model.bin.index.json'):
+        index = _read_json_file(path / name)
+        weight_map = index.get('weight_map') if index else None
+        if isinstance(weight_map, dict):
+            expected.update(str(value) for value in weight_map.values() if isinstance(value, str))
+    return sorted(name for name in expected if not (path / name).is_file())
+
+
 def _detect_local_metadata(path: Path | None, model_id: str) -> dict:
     metadata: dict = {
         'format': None,
@@ -446,6 +459,7 @@ def _detect_local_metadata(path: Path | None, model_id: str) -> dict:
     config = _read_json_file(config_path) if config_path.exists() else None
     metadata['config_present'] = bool(config)
     metadata['tokenizer_present'] = _tokenizer_present(path if path.is_dir() else path.parent, files)
+    missing_weight_files = _missing_indexed_weight_files(path if path.is_dir() else path.parent)
 
     if config:
         architectures = config.get('architectures')
@@ -491,6 +505,13 @@ def _detect_local_metadata(path: Path | None, model_id: str) -> dict:
     metadata['compatibility_reasons'] = reasons
     metadata['suggested_load_format'] = suggested
     metadata['metadata_warnings'].extend(warnings)
+    if missing_weight_files:
+        metadata['compatibility_status'] = 'attention'
+        metadata['compatibility_label'] = 'Incomplete checkpoint'
+        metadata['metadata_warnings'].append(
+            f"Checkpoint index references {len(missing_weight_files)} missing weight shard(s): "
+            + ', '.join(missing_weight_files[:5])
+        )
     return metadata
 
 def _looks_like_model_dir(path: Path) -> bool:
@@ -518,6 +539,8 @@ def _looks_like_model_dir(path: Path) -> bool:
 
 
 def _local_model_id_from_path(path: Path, root: Path) -> str:
+    if path.parent.name == 'snapshots' and path.parent.parent.name.startswith('models--'):
+        return path.parent.parent.name.removeprefix('models--').replace('--', '/')
     try:
         rel = path.relative_to(root)
     except ValueError:
@@ -560,7 +583,7 @@ def scan_on_device_models(root: Path, *, max_files: int = 5000) -> tuple[list[Lo
         records.append(LocalModelRecord(
             id=f'{source}:{_safe_id(model_id)}:{_safe_id(str(path))[-24:]}',
             model_id=model_id,
-            display_name=path.stem if path.is_file() else path.name.replace('--', '/').split('/')[-1],
+            display_name=path.stem if path.is_file() else model_id.split('/')[-1],
             source=source,
             local_path=str(path),
             size_bytes=size,

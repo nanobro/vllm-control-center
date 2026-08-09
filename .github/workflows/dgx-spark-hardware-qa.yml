@@ -1,0 +1,74 @@
+name: DGX Spark Hardware QA
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or commit to test
+        required: true
+        default: feature/v0.79-recipe-load-eject
+      model:
+        description: Local checkpoint path or Hugging Face model ID
+        required: true
+        default: unsloth/Qwen3.6-35B-A3B-NVFP4-Fast
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dgx-spark-hardware-qa
+  cancel-in-progress: false
+
+jobs:
+  hardware-qa:
+    # Register the private machine with all four labels below. This workflow is
+    # manual-only so public pull requests cannot execute arbitrary code on DGX.
+    runs-on: [self-hosted, linux, ARM64, dgx-spark]
+    timeout-minutes: 30
+    environment: dgx-hardware
+    steps:
+      - name: Check out requested revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          clean: true
+
+      - name: Confirm runner identity
+        env:
+          VCC_PYTHON: ${{ vars.VCC_PYTHON }}
+          VCC_VLLM_BIN: ${{ vars.VCC_VLLM_BIN }}
+          VCC_VLLM_PYTHON: ${{ vars.VCC_VLLM_PYTHON }}
+        run: |
+          set -eu
+          uname -a
+          test "$(uname -m)" = "aarch64"
+          nvidia-smi
+          vllm_bin="${VCC_VLLM_BIN:-$(command -v vllm)}"
+          if [ -n "${VCC_VLLM_PYTHON:-}" ]; then
+            vllm_python="$VCC_VLLM_PYTHON"
+          elif [ -x "$(dirname "$vllm_bin")/python" ]; then
+            vllm_python="$(dirname "$vllm_bin")/python"
+          else
+            vllm_python="${VCC_PYTHON:-python3}"
+          fi
+          "$vllm_bin" --version
+          "$vllm_python" -c 'import torch; print(torch.__version__, torch.version.cuda)'
+
+      - name: Run recipe lifecycle
+        env:
+          VCC_DGX_MODEL: ${{ inputs.model }}
+          VCC_PYTHON: ${{ vars.VCC_PYTHON }}
+          VCC_VLLM_BIN: ${{ vars.VCC_VLLM_BIN }}
+          VCC_VLLM_PYTHON: ${{ vars.VCC_VLLM_PYTHON }}
+        run: |
+          set -eu
+          "${VCC_PYTHON:-python3}" scripts/dgx-spark-hardware-qa.py
+
+      - name: Upload sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dgx-spark-v079-hardware-qa-${{ github.run_id }}
+          path: artifacts/hardware-qa/
+          if-no-files-found: error
+          retention-days: 14

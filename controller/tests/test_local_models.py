@@ -136,10 +136,12 @@ async def test_local_models_reads_metadata_from_config_and_gguf(tmp_path):
     assert response.status_code == 200
     models = {item['model_id']: item for item in response.json()['models']}
     assert models['org/meta-model']['format'] == 'Safetensors'
+    assert models['org/meta-model']['display_name'] == 'meta-model'
     assert models['org/meta-model']['architecture'] == 'Qwen3ForCausalLM'
     assert models['org/meta-model']['context_length'] == 32768
     assert models['org/gguf-model']['format'] == 'GGUF'
     assert models['org/gguf-model']['quantization'] == 'Q4-K-M'
+    assert not any(item['display_name'] in {'abc123', 'def456'} for item in response.json()['models'])
 
 async def test_load_local_model_reuses_running_instance_instead_of_duplicate(tmp_path):
     client = TestClient(app)
@@ -403,6 +405,29 @@ async def test_v22_3_flags_snapshot_missing_tokenizer_as_likely_not_silent_ready
     assert model['compatibility_status'] == 'likely'
     assert model['compatibility_label'] == 'Likely vLLM-ready'
     assert any('tokenizer' in warning.lower() for warning in model['metadata_warnings'])
+
+
+async def test_sharded_snapshot_missing_indexed_weights_is_not_reported_ready(tmp_path, monkeypatch):
+    client = TestClient(app)
+    model_dir = tmp_path / 'partial-sharded-model'
+    model_dir.mkdir()
+    (model_dir / 'config.json').write_text('{"architectures":["TestModel"]}')
+    (model_dir / 'tokenizer_config.json').write_text('{}')
+    (model_dir / 'model-00003-of-00005.safetensors').write_text('present')
+    (model_dir / 'model.safetensors.index.json').write_text(
+        '{"weight_map":{"a":"model-00001-of-00005.safetensors",'
+        '"b":"model-00003-of-00005.safetensors",'
+        '"c":"model-00005-of-00005.safetensors"}}'
+    )
+    monkeypatch.setenv('VCC_MODEL_DIRS', str(tmp_path))
+
+    response = client.get('/api/local-models')
+
+    assert response.status_code == 200
+    model = next(item for item in response.json()['models'] if item['local_path'] == str(model_dir))
+    assert model['compatibility_status'] == 'attention'
+    assert model['compatibility_label'] == 'Incomplete checkpoint'
+    assert any('2 missing weight shard' in warning for warning in model['metadata_warnings'])
 
 
 async def test_v22_3_marks_gguf_as_limited_compatibility(tmp_path, monkeypatch):
